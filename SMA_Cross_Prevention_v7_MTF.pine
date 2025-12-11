@@ -1,0 +1,398 @@
+//@version=5
+indicator("SMA Cross Prevention v7 (MTF)", overlay=true, max_lines_count=500, max_labels_count=20, max_bars_back=500)
+
+// === INPUTS ===
+grpMA = "Moving Averages"
+maTimeframe = input.timeframe("D", "MA Timeframe", group=grpMA, tooltip="Timeframe for MA calculation (e.g., D for Daily, 240 for 4H)")
+fastLength = input.int(69, "Fast MA Length", minval=1, group=grpMA)
+slowLength = input.int(420, "Slow MA Length", minval=1, group=grpMA)
+
+grpProj = "Projection Settings"
+lookAhead = input.int(20, "Bars to Project (in MA timeframe)", minval=1, maxval=20, group=grpProj)
+
+grpVis = "Visualization"
+showPricePath = input.bool(true, "Show MIN Price Path", group=grpVis)
+showMaProjections = input.bool(true, "Show MA Projections", group=grpVis)
+showSafeZone = input.bool(true, "Show Safe Zone Fill", group=grpVis)
+zoneTransparency = input.int(85, "Zone Transparency", minval=50, maxval=95, group=grpVis)
+refreshDraw = input.int(0, "↻ Refresh (change to redraw)", minval=0, maxval=100, step=1, group=grpVis)
+
+grpCol = "Colors"
+fastMAColor = input.color(color.blue, "Fast MA Color", group=grpCol)
+slowMAColor = input.color(color.orange, "Slow MA Color", group=grpCol)
+minZoneColor = input.color(color.green, "Min Prevention Color", group=grpCol)
+dangerColor = input.color(color.red, "Danger Color", group=grpCol)
+
+// === MULTI-TIMEFRAME DATA - CONSOLIDATED CALLS ===
+// Use tuples to fetch multiple values per request.security call
+
+// Core data (1 call with tuple)
+[htfClose, fastMA, slowMA, htfFastSum, htfSlowSum, fastMA_prev, slowMA_prev] = request.security(syminfo.tickerid, maTimeframe, 
+     [close, ta.sma(close, fastLength), ta.sma(close, slowLength), 
+      math.sum(close, fastLength), math.sum(close, slowLength),
+      ta.sma(close, fastLength)[1], ta.sma(close, slowLength)[1]])
+
+// Fast MA drop values - fetch 5 per call (4 calls = 20 values)
+[htfC_f0, htfC_f1, htfC_f2, htfC_f3, htfC_f4] = request.security(syminfo.tickerid, maTimeframe,
+     [close[fastLength - 1], close[fastLength], close[fastLength + 1], close[fastLength + 2], close[fastLength + 3]])
+
+[htfC_f5, htfC_f6, htfC_f7, htfC_f8, htfC_f9] = request.security(syminfo.tickerid, maTimeframe,
+     [close[fastLength + 4], close[fastLength + 5], close[fastLength + 6], close[fastLength + 7], close[fastLength + 8]])
+
+[htfC_f10, htfC_f11, htfC_f12, htfC_f13, htfC_f14] = request.security(syminfo.tickerid, maTimeframe,
+     [close[fastLength + 9], close[fastLength + 10], close[fastLength + 11], close[fastLength + 12], close[fastLength + 13]])
+
+[htfC_f15, htfC_f16, htfC_f17, htfC_f18, htfC_f19] = request.security(syminfo.tickerid, maTimeframe,
+     [close[fastLength + 14], close[fastLength + 15], close[fastLength + 16], close[fastLength + 17], close[fastLength + 18]])
+
+// Slow MA drop values - fetch 5 per call (4 calls = 20 values)
+[htfC_s0, htfC_s1, htfC_s2, htfC_s3, htfC_s4] = request.security(syminfo.tickerid, maTimeframe,
+     [close[slowLength - 1], close[slowLength], close[slowLength + 1], close[slowLength + 2], close[slowLength + 3]])
+
+[htfC_s5, htfC_s6, htfC_s7, htfC_s8, htfC_s9] = request.security(syminfo.tickerid, maTimeframe,
+     [close[slowLength + 4], close[slowLength + 5], close[slowLength + 6], close[slowLength + 7], close[slowLength + 8]])
+
+[htfC_s10, htfC_s11, htfC_s12, htfC_s13, htfC_s14] = request.security(syminfo.tickerid, maTimeframe,
+     [close[slowLength + 9], close[slowLength + 10], close[slowLength + 11], close[slowLength + 12], close[slowLength + 13]])
+
+[htfC_s15, htfC_s16, htfC_s17, htfC_s18, htfC_s19] = request.security(syminfo.tickerid, maTimeframe,
+     [close[slowLength + 14], close[slowLength + 15], close[slowLength + 16], close[slowLength + 17], close[slowLength + 18]])
+
+// Total: 9 request.security calls
+
+// Build arrays from pre-fetched values
+var float[] fastDropVals = array.new_float(20, 0.0)
+var float[] slowDropVals = array.new_float(20, 0.0)
+
+if barstate.islast
+    array.set(fastDropVals, 0, htfC_f0)
+    array.set(fastDropVals, 1, htfC_f1)
+    array.set(fastDropVals, 2, htfC_f2)
+    array.set(fastDropVals, 3, htfC_f3)
+    array.set(fastDropVals, 4, htfC_f4)
+    array.set(fastDropVals, 5, htfC_f5)
+    array.set(fastDropVals, 6, htfC_f6)
+    array.set(fastDropVals, 7, htfC_f7)
+    array.set(fastDropVals, 8, htfC_f8)
+    array.set(fastDropVals, 9, htfC_f9)
+    array.set(fastDropVals, 10, htfC_f10)
+    array.set(fastDropVals, 11, htfC_f11)
+    array.set(fastDropVals, 12, htfC_f12)
+    array.set(fastDropVals, 13, htfC_f13)
+    array.set(fastDropVals, 14, htfC_f14)
+    array.set(fastDropVals, 15, htfC_f15)
+    array.set(fastDropVals, 16, htfC_f16)
+    array.set(fastDropVals, 17, htfC_f17)
+    array.set(fastDropVals, 18, htfC_f18)
+    array.set(fastDropVals, 19, htfC_f19)
+    
+    array.set(slowDropVals, 0, htfC_s0)
+    array.set(slowDropVals, 1, htfC_s1)
+    array.set(slowDropVals, 2, htfC_s2)
+    array.set(slowDropVals, 3, htfC_s3)
+    array.set(slowDropVals, 4, htfC_s4)
+    array.set(slowDropVals, 5, htfC_s5)
+    array.set(slowDropVals, 6, htfC_s6)
+    array.set(slowDropVals, 7, htfC_s7)
+    array.set(slowDropVals, 8, htfC_s8)
+    array.set(slowDropVals, 9, htfC_s9)
+    array.set(slowDropVals, 10, htfC_s10)
+    array.set(slowDropVals, 11, htfC_s11)
+    array.set(slowDropVals, 12, htfC_s12)
+    array.set(slowDropVals, 13, htfC_s13)
+    array.set(slowDropVals, 14, htfC_s14)
+    array.set(slowDropVals, 15, htfC_s15)
+    array.set(slowDropVals, 16, htfC_s16)
+    array.set(slowDropVals, 17, htfC_s17)
+    array.set(slowDropVals, 18, htfC_s18)
+    array.set(slowDropVals, 19, htfC_s19)
+
+// Plot the higher timeframe MAs
+plot(fastMA, "Fast MA", color=fastMAColor, linewidth=2)
+plot(slowMA, "Slow MA", color=slowMAColor, linewidth=2)
+
+// === STATE ===
+isBullish = fastMA > slowMA
+gap = fastMA - slowMA
+
+// === CONVERGENCE ANALYSIS ===
+fastROC = fastMA - fastMA_prev
+slowROC = slowMA - slowMA_prev
+convergenceRate = fastROC - slowROC
+
+// === PRE-CALCULATE CUMULATIVE DROPS ===
+var float[] fastDrops = array.new_float(21, 0.0)
+var float[] slowDrops = array.new_float(21, 0.0)
+
+// Optimized MA projection
+projectMAsOpt(int bars, float cumNewPriceSum, float baseFastSum, float baseSlowSum, float cumFastDrop, float cumSlowDrop) =>
+    float projFast = (baseFastSum - cumFastDrop + cumNewPriceSum) / fastLength
+    float projSlow = (baseSlowSum - cumSlowDrop + cumNewPriceSum) / slowLength
+    [projFast, projSlow]
+
+// === DRAWING ARRAYS ===
+var line[] allLines = array.new_line(400, na)
+var label[] allLabels = array.new_label(10, na)
+var linefill[] allFills = array.new_linefill(50, na)
+var table infoTable = table.new(position.top_right, 2, 11, bgcolor=color.new(color.black, 80), border_width=1)
+
+// === CALCULATE BARS PER HTF PERIOD ===
+var int barsPerHTF = 1
+var int maxDrawBars = 20  // Max HTF bars we can draw (will be capped by 500 bar limit)
+if barstate.islast
+    int tfMins = timeframe.in_seconds(maTimeframe) / 60
+    int chartMins = timeframe.in_seconds(timeframe.period) / 60
+    barsPerHTF := chartMins > 0 ? math.max(1, tfMins / chartMins) : 1
+    // Cap drawing to stay under 500 bar limit (leave room for labels)
+    maxDrawBars := math.min(lookAhead, int(math.floor(480 / barsPerHTF)))
+
+// === CALCULATE AND DRAW ON LAST BAR ONLY ===
+if barstate.islast
+    // Build cumulative drops from pre-fetched values
+    float cumFastDrop = 0.0
+    float cumSlowDrop = 0.0
+    array.set(fastDrops, 0, 0.0)
+    array.set(slowDrops, 0, 0.0)
+    
+    for i = 1 to 20
+        cumFastDrop += nz(array.get(fastDropVals, i - 1), htfClose)
+        cumSlowDrop += nz(array.get(slowDropVals, i - 1), htfClose)
+        array.set(fastDrops, i, cumFastDrop)
+        array.set(slowDrops, i, cumSlowDrop)
+    
+    // --- Calculate flat cross bar ---
+    int flatCrossBar = 0
+    float cumFlatPrice = 0.0
+    for i = 1 to lookAhead
+        cumFlatPrice += htfClose
+        [pFast, pSlow] = projectMAsOpt(i, cumFlatPrice, htfFastSum, htfSlowSum, array.get(fastDrops, i), array.get(slowDrops, i))
+        if isBullish and pFast < pSlow and flatCrossBar == 0
+            flatCrossBar := i
+    
+    // --- Binary search for minimum curve target ---
+    float minCurveTarget = na
+    
+    if flatCrossBar > 0
+        int lo = 1
+        int hi = 200
+        int result = -1
+        
+        for _iter = 0 to 8
+            if lo > hi
+                break
+            int mid = (lo + hi) / 2
+            
+            float testTarget = htfClose * (1 + mid / 100.0)
+            float cumPrice = 0.0
+            bool crosses = false
+            
+            for i = 1 to lookAhead
+                float progress = float(i) / float(lookAhead)
+                float curveProgress = 1 - math.pow(1 - progress, 2)
+                float priceAtBar = htfClose + (testTarget - htfClose) * curveProgress
+                cumPrice += priceAtBar
+                [pFast, pSlow] = projectMAsOpt(i, cumPrice, htfFastSum, htfSlowSum, array.get(fastDrops, i), array.get(slowDrops, i))
+                
+                if isBullish and pFast < pSlow
+                    crosses := true
+                    break
+            
+            if not crosses
+                result := mid
+                hi := mid - 1
+            else
+                lo := mid + 1
+        
+        if result > 0
+            minCurveTarget := htfClose * (1 + result / 100.0)
+    
+    // --- Binary search for min spike NOW ---
+    float minSpikeNow = na
+    int loSpike = 1
+    int hiSpike = 200
+    for _iter = 0 to 8
+        if loSpike > hiSpike
+            break
+        int mid = (loSpike + hiSpike) / 2
+        float cumPrice = 0.0
+        bool crosses = false
+        for i = 1 to lookAhead
+            cumPrice += htfClose * (1 + mid / 100.0)
+            [pFast, pSlow] = projectMAsOpt(i, cumPrice, htfFastSum, htfSlowSum, array.get(fastDrops, i), array.get(slowDrops, i))
+            if isBullish and pFast < pSlow
+                crosses := true
+                break
+        if not crosses
+            minSpikeNow := mid
+            hiSpike := mid - 1
+        else
+            loSpike := mid + 1
+    
+    // --- Last-minute save analysis ---
+    int lastPossibleSaveBar = 0
+    float minSpikeAtLastPossible = na
+    
+    int maxDelay = math.min(lookAhead - 1, 15)
+    for delay = 0 to maxDelay by 3
+        int loD = 1
+        int hiD = 200
+        float minNeeded = na
+        
+        for _iter = 0 to 8
+            if loD > hiD
+                break
+            int mid = (loD + hiD) / 2
+            float cumPrice = 0.0
+            bool crosses = false
+            for i = 1 to lookAhead
+                float priceAtBar = i <= delay ? htfClose : htfClose * (1 + mid / 100.0)
+                cumPrice += priceAtBar
+                [pFast, pSlow] = projectMAsOpt(i, cumPrice, htfFastSum, htfSlowSum, array.get(fastDrops, i), array.get(slowDrops, i))
+                if isBullish and pFast < pSlow
+                    crosses := true
+                    break
+            if not crosses
+                minNeeded := mid
+                hiD := mid - 1
+            else
+                loD := mid + 1
+        
+        if not na(minNeeded) and minNeeded <= 200
+            lastPossibleSaveBar := delay
+            minSpikeAtLastPossible := minNeeded
+    
+    // --- Cleanup previous drawings ---
+    for i = 0 to array.size(allLines) - 1
+        line.delete(array.get(allLines, i))
+    for i = 0 to array.size(allLabels) - 1
+        label.delete(array.get(allLabels, i))
+    for i = 0 to array.size(allFills) - 1
+        linefill.delete(array.get(allFills, i))
+    
+    int lineIdx = 0
+    int labelIdx = 0
+    int fillIdx = 0
+    
+    int _refresh = refreshDraw
+    
+    bool minRealistic = not na(minCurveTarget) and minCurveTarget > 0 and minCurveTarget < htfClose * 3
+    
+    // === MIN PREVENTION PATH WITH MA PROJECTIONS ===
+    if minRealistic
+        float prevMinPrice = htfClose
+        float prevMinFast = fastMA
+        float prevMinSlow = slowMA
+        float cumMinPrice = 0.0
+        
+        // Use maxDrawBars to limit drawing (but calculations still use full lookAhead)
+        for i = 1 to maxDrawBars
+            float progress = float(i) / float(lookAhead)
+            float curveProgress = 1 - math.pow(1 - progress, 2)
+            float priceAtBar = htfClose + (minCurveTarget - htfClose) * curveProgress
+            
+            cumMinPrice += priceAtBar
+            [pFast, pSlow] = projectMAsOpt(i, cumMinPrice, htfFastSum, htfSlowSum, array.get(fastDrops, i), array.get(slowDrops, i))
+            
+            int barOffset = math.min(i * barsPerHTF, 490)
+            int prevBarOffset = math.min((i - 1) * barsPerHTF, 490)
+            
+            if showPricePath
+                array.set(allLines, lineIdx, line.new(bar_index + prevBarOffset, prevMinPrice, bar_index + barOffset, priceAtBar,
+                     color=minZoneColor, style=line.style_solid, width=3))
+                lineIdx += 1
+            
+            if showMaProjections
+                array.set(allLines, lineIdx, line.new(bar_index + prevBarOffset, prevMinFast, bar_index + barOffset, pFast,
+                     color=color.new(fastMAColor, 40), style=line.style_solid, width=2))
+                lineIdx += 1
+                array.set(allLines, lineIdx, line.new(bar_index + prevBarOffset, prevMinSlow, bar_index + barOffset, pSlow,
+                     color=color.new(slowMAColor, 40), style=line.style_solid, width=2))
+                lineIdx += 1
+            
+            if showSafeZone
+                float upperBound = minCurveTarget * 1.5
+                line minLine = line.new(bar_index + prevBarOffset, prevMinPrice, bar_index + barOffset, priceAtBar,
+                     color=color.new(color.white, 100))
+                line upperLine = line.new(bar_index + prevBarOffset, upperBound, bar_index + barOffset, upperBound,
+                     color=color.new(color.white, 100))
+                array.set(allLines, lineIdx, minLine)
+                lineIdx += 1
+                array.set(allLines, lineIdx, upperLine)
+                lineIdx += 1
+                array.set(allFills, fillIdx, linefill.new(minLine, upperLine, color.new(minZoneColor, zoneTransparency)))
+                fillIdx += 1
+            
+            prevMinPrice := priceAtBar
+            prevMinFast := pFast
+            prevMinSlow := pSlow
+        
+        string minPct = str.tostring((minCurveTarget/htfClose - 1) * 100, "#.#")
+        int labelOffset = math.min((maxDrawBars + 1) * barsPerHTF, 495)
+        array.set(allLabels, labelIdx, label.new(bar_index + labelOffset, minCurveTarget,
+             "MIN\n+" + minPct + "%",
+             style=label.style_label_left, color=color.new(minZoneColor, 0),
+             textcolor=color.white, size=size.small))
+        labelIdx += 1
+    
+    // === POINT OF NO RETURN ===
+    if lastPossibleSaveBar > 0 and lastPossibleSaveBar < lookAhead
+        float spikeNeededAtLast = minSpikeAtLastPossible
+        float priceAtLast = not na(spikeNeededAtLast) ? htfClose * (1 + spikeNeededAtLast/100) : htfClose * 1.5
+        
+        int porBarOffset = math.min(lastPossibleSaveBar * barsPerHTF, 490)
+        
+        array.set(allLines, lineIdx, line.new(bar_index + porBarOffset, htfClose * 0.95, bar_index + porBarOffset, priceAtLast * 1.05,
+             color=color.new(color.purple, 30), style=line.style_dashed, width=2))
+        lineIdx += 1
+        
+        string porLabel = "⚠ POINT OF NO RETURN\nDay " + str.tostring(lastPossibleSaveBar) + " (need +" + str.tostring(spikeNeededAtLast, "#") + "%)"
+        array.set(allLabels, labelIdx, label.new(bar_index + porBarOffset, priceAtLast * 1.02,
+             porLabel, style=label.style_label_down, color=color.new(color.purple, 0),
+             textcolor=color.white, size=size.small))
+        labelIdx += 1
+
+    // === INFO TABLE ===
+    bool minRealisticTable = not na(minCurveTarget) and minCurveTarget > 0 and minCurveTarget < htfClose * 3
+    float minMovePercent = minRealisticTable ? (minCurveTarget / htfClose - 1) * 100 : na
+    
+    table.cell(infoTable, 0, 0, "MA Cross Prevention v7 (MTF)", text_color=color.white, bgcolor=color.new(color.blue, 60))
+    table.merge_cells(infoTable, 0, 0, 1, 0)
+    
+    table.cell(infoTable, 0, 1, "MA Timeframe", text_color=color.gray)
+    table.cell(infoTable, 1, 1, maTimeframe, text_color=color.white, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 2, "Fast MA (" + str.tostring(fastLength) + ")", text_color=fastMAColor)
+    table.cell(infoTable, 1, 2, str.tostring(fastMA, format.mintick), text_color=fastMAColor, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 3, "Slow MA (" + str.tostring(slowLength) + ")", text_color=slowMAColor)
+    table.cell(infoTable, 1, 3, str.tostring(slowMA, format.mintick), text_color=slowMAColor, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 4, "Current Gap", text_color=color.white)
+    table.cell(infoTable, 1, 4, str.tostring(gap, format.mintick), text_color=isBullish ? color.green : color.red, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 5, "Convergence Rate", text_color=color.white)
+    string convDir = convergenceRate < 0 ? "▼ " : "▲ "
+    table.cell(infoTable, 1, 5, convDir + str.tostring(math.abs(convergenceRate), format.mintick) + "/day", 
+         text_color=convergenceRate < 0 ? color.red : color.green, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 6, "If Flat, Cross In", text_color=color.gray)
+    string crossStr = flatCrossBar > 0 ? str.tostring(flatCrossBar) + " days" : "> " + str.tostring(lookAhead) + " days"
+    table.cell(infoTable, 1, 6, crossStr, text_color=flatCrossBar > 0 and flatCrossBar <= 10 ? dangerColor : color.gray, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 7, "MIN Curve Target", text_color=minZoneColor)
+    string minStr = minRealisticTable ? str.tostring(minCurveTarget, format.mintick) + " (+" + str.tostring(minMovePercent, "#.#") + "%)" : "N/A"
+    table.cell(infoTable, 1, 7, minStr, text_color=minZoneColor, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 8, "Min Spike NOW", text_color=color.white)
+    string minSpikeNowStr = not na(minSpikeNow) ? "+" + str.tostring(minSpikeNow, "#") + "%" : "> 200%"
+    table.cell(infoTable, 1, 8, minSpikeNowStr, text_color=minSpikeNow <= 50 ? color.green : color.orange, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 9, "Point of No Return", text_color=color.purple)
+    string lastPossibleStr = lastPossibleSaveBar > 0 ? "day " + str.tostring(lastPossibleSaveBar) + " (+" + str.tostring(minSpikeAtLastPossible, "#") + "%)" : "PASSED"
+    table.cell(infoTable, 1, 9, lastPossibleStr, text_color=lastPossibleSaveBar > 3 ? color.purple : dangerColor, text_halign=text.align_right)
+    
+    table.cell(infoTable, 0, 10, "Projection", text_color=color.gray)
+    table.cell(infoTable, 1, 10, str.tostring(lookAhead) + " days" + (maxDrawBars < lookAhead ? " (showing " + str.tostring(maxDrawBars) + ")" : ""), text_color=color.gray, text_halign=text.align_right)
+
+// === ALERTS ===
+alertcondition(barstate.islast, "Cross Check", "Check MA cross prevention status")
