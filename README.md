@@ -142,7 +142,7 @@ MIT License — use freely, attribution appreciated.
 
 ## Author
 
-Concept and implementation by Brad Selph.
+Concept and implementation by Free Online User.
 
 ---
 
