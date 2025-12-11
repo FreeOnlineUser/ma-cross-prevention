@@ -85,24 +85,11 @@ The price path follows an easing curve (quadratic ease-out) which models realist
 2. **Probability Filter**: Low MIN % = normal volatility can save it. High MIN % = needs major catalyst
 3. **Forward Warning**: Know days/weeks in advance if structure is under real threat
 
-## Indicator Versions
-
-### v6 - Optimized Single Timeframe
-- Binary search optimization (~10-15x faster than v5)
-- Pre-calculated cumulative drops
-- Best for analyzing charts on their native timeframe
-
-### v7 - Multi-Timeframe (MTF)
-- Run on 1H chart, calculate Daily MAs
-- All optimizations from v6
-- Auto-scales projections to chart timeframe
-- Handles Pine Script's 500-bar drawing limit
-
 ## Installation
 
 1. Open TradingView
 2. Go to Pine Editor
-3. Copy the contents of `SMA_Cross_Prevention_v7_MTF.pine` (or v6 for single timeframe)
+3. Copy the contents of `SMA_Cross_Prevention.pine`
 4. Click "Add to Chart"
 
 ## Settings
@@ -113,7 +100,7 @@ The price path follows an easing curve (quadratic ease-out) which models realist
 - **Slow MA Length**: Default 420
 
 ### Projection Settings
-- **Bars to Project**: How far ahead to calculate (max 20 for MTF version)
+- **Bars to Project**: How far ahead to calculate (max 20)
 
 ### Visualization
 - **Show MIN Price Path**: The minimum required price curve
